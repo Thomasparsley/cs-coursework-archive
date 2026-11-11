@@ -61,6 +61,10 @@ Credit project for a data structures course with two parts:
   min tree, extract min, decrease key), with optional tree printing via the
   `ete3` package.
 
+Running tests for `binomial_heap/`: `cd dast/binomial_heap && python -m pytest`
+(needs `pytest`, Python 3.10+; the `str()` printing test is skipped unless
+`ete3` is installed).
+
 ## binomial-heap
 
 - Original: https://github.com/Thomasparsley/binomial-heap
@@ -70,6 +74,9 @@ Credit project for a data structures course with two parts:
 Standalone version of the binomial heap from the data structures course:
 `BinomialHeap`, `BinomialTree` and `BinomialNode` classes with the same
 operations as listed under dast.
+
+Running tests: `cd binomial-heap && python -m pytest` (needs `pytest`,
+Python 3.10+; the `str()` printing test is skipped unless `ete3` is installed).
 
 ## b-tree
 
