@@ -146,7 +146,7 @@ class Formula
     {
         return new Formula()
         {
-            clauses = new List<Clause>(this.clauses),
+            clauses = this.clauses.Select(c => new Clause { literals = new Literals(c.literals) }).ToList(),
             variables = new Dictionary<long, Variable>(this.variables)
         };
     }
@@ -156,11 +156,9 @@ class Formula
     public static Formula operator & (Formula formula, Literal literal)
     {
         var f = formula.Clone();
-        
-        if (literal.isTrue)
-            f = DPLL.UnitSubsumpion(f, literal);
-        else
-            f = DPLL.UnitResolution(f, literal);
+
+        f = DPLL.UnitSubsumpion(f, literal);
+        f = DPLL.UnitResolution(f, literal);
 
         return f;
     }
