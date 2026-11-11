@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"reflect"
 )
 
 type node struct {
@@ -24,7 +23,7 @@ func NewBtreeNode(t int, isLeaf bool) *node {
 	}
 }
 
-func (this node) GetFirstKey() int {
+func (this *node) GetFirstKey() int {
 	if this.length == 0 {
 		return -1
 	} else {
@@ -32,7 +31,7 @@ func (this node) GetFirstKey() int {
 	}
 }
 
-func (this node) GetFirstKeyIndex() int {
+func (this *node) GetFirstKeyIndex() int {
 
 	if this.length == 0 {
 		return -1
@@ -41,7 +40,7 @@ func (this node) GetFirstKeyIndex() int {
 	}
 }
 
-func (this node) GetLastKey() int {
+func (this *node) GetLastKey() int {
 	if this.length == 0 {
 		return -1
 	} else {
@@ -49,7 +48,7 @@ func (this node) GetLastKey() int {
 	}
 }
 
-func (this node) GetLastKeyIndex() int {
+func (this *node) GetLastKeyIndex() int {
 
 	if this.length == 0 {
 		return -1
@@ -58,7 +57,7 @@ func (this node) GetLastKeyIndex() int {
 	}
 }
 
-func (this node) GetLastChildrenIndex() int {
+func (this *node) GetLastChildrenIndex() int {
 	for i := len(this.childrens) - 1; i >= 0; i-- {
 		if this.childrens[i] != nil {
 			return i
@@ -68,7 +67,7 @@ func (this node) GetLastChildrenIndex() int {
 	return -1
 }
 
-func (this node) GetLastChildren() *node {
+func (this *node) GetLastChildren() *node {
 	for i := len(this.childrens) - 1; i >= 0; i-- {
 		if this.childrens[i] != nil {
 			return this.childrens[i]
@@ -78,32 +77,27 @@ func (this node) GetLastChildren() *node {
 	return nil
 }
 
-func (this node) FindMaxKey() (int, int) {
+func (this *node) FindMaxKey() (int, int) {
 	if this.isLeaf {
-		return this.GetLastKey(), this.GetFirstKeyIndex()
+		return this.GetLastKey(), this.GetLastKeyIndex()
 	} else {
 		return this.GetLastChildren().FindMaxKey()
 	}
 }
 
-func (this node) InsertInOrder(key int) {
-	if this.length == 0 {
-		this.keys[0] = key
-	} else {
-		i := this.length - 1
+func (this *node) InsertInOrder(key int) {
+	i := this.length - 1
 
-		for i >= 0 && key < this.keys[i] {
-			this.keys[i+1] = this.keys[i]
-			i--
-		}
-
-		this.keys[i+1] = key
+	for i >= 0 && key < this.keys[i] {
+		this.keys[i+1] = this.keys[i]
+		i--
 	}
 
+	this.keys[i+1] = key
 	this.length++
 }
 
-func (this node) InsertNonFull(key int) {
+func (this *node) InsertNonFull(key int) {
 	if this.isLeaf {
 		this.InsertInOrder(key)
 	} else {
@@ -127,17 +121,17 @@ func (this node) InsertNonFull(key int) {
 	}
 }
 
-func (this node) SplitChild(index int) {
+func (this *node) SplitChild(index int) {
 	y := this.childrens[index]
 	z := NewBtreeNode(this.T, y.isLeaf)
 
-	z.parent = y.parent
+	z.parent = this
 	z.length = this.T - 1
 	y.length = this.T - 1
 
 	// 1.
 	// Zkopírování pravé částí klíčů do nového uzlu
-	for j := 0; j < this.T; j++ {
+	for j := 0; j < this.T-1; j++ {
 		z.keys[j] = y.keys[j+this.T]
 		y.keys[j+this.T] = 0
 	}
@@ -155,7 +149,6 @@ func (this node) SplitChild(index int) {
 
 	// 2.
 	// Posuneme klíče v aktuálním uzlu o 1 doprava
-
 	for j := this.length - 1; j >= index; j-- {
 		this.keys[j+1] = this.keys[j]
 	}
@@ -166,14 +159,14 @@ func (this node) SplitChild(index int) {
 	}
 
 	// 3.
-	// Do akzuálního uzlo zapojíme nový uzel
+	// Do aktuálního uzlu zapojíme nový uzel
 	this.childrens[index+1] = z
 	this.keys[index] = y.keys[this.T-1]
 	y.keys[this.T-1] = 0
 	this.length++
 }
 
-func (this node) Search(key int) (*node, int) {
+func (this *node) Search(key int) (*node, int) {
 	i := 0
 
 	for i < this.length && key > this.keys[i] {
@@ -181,7 +174,7 @@ func (this node) Search(key int) (*node, int) {
 	}
 
 	if i < this.length && key == this.keys[i] {
-		return &this, i
+		return this, i
 	}
 
 	if this.isLeaf {
@@ -191,96 +184,59 @@ func (this node) Search(key int) (*node, int) {
 	return this.childrens[i].Search(key)
 }
 
-func (this node) InsertThisNode(mergedNode *node) {
-	length := mergedNode.length
-	for i := 0; i < this.length; i++ {
-		mergedNode.keys[length+i] = this.keys[i]
-		this.keys[i] = 0
-		mergedNode.length++
-	}
+// Spojí uzel se sourozencem (levým nebo pravým) a separátorem z rodiče.
+// Levý z dvojice uzlů přežije, pravý zaniká.
+func (this *node) MargeTwoNodes(leftSibling bool, thisNodeIndex int) {
+	var leftIndex int
 
-	for i := 0; i < this.GetLastChildrenIndex(); i++ {
-		mergedNode.childrens[i] = this.childrens[i]
-		this.childrens[i] = nil
-	}
-}
-
-func (this node) InsertSiblig(mergedNode *node, leftSibling bool, thisNodeIndex int) {
-	var siblingNode *node
-	if !leftSibling {
-		siblingNode = this.parent.childrens[thisNodeIndex+1]
+	if leftSibling {
+		leftIndex = thisNodeIndex - 1
 	} else {
-		siblingNode = this.parent.childrens[thisNodeIndex-1]
+		leftIndex = thisNodeIndex
 	}
 
-	length := mergedNode.length
-	for i := 0; i < siblingNode.length; i++ {
-		mergedNode.keys[length+i] = siblingNode.keys[i]
-		siblingNode.keys[i] = 0
-		mergedNode.length++
+	left := this.parent.childrens[leftIndex]
+	right := this.parent.childrens[leftIndex+1]
+
+	// Separátor z rodiče
+	left.keys[left.length] = this.parent.keys[leftIndex]
+
+	// Klíče pravého uzlu
+	for i := 0; i < right.length; i++ {
+		left.keys[left.length+1+i] = right.keys[i]
 	}
 
-	for i := 0; i < siblingNode.GetLastChildrenIndex(); i++ {
-		mergedNode.childrens[length+i] = siblingNode.childrens[i]
-		siblingNode.childrens[i] = nil
-	}
-}
-
-func (this node) InsertParentKey(mergedNode *node, leftSibling bool, thisNodeIndex int) {
-	var index int
-
-	if !leftSibling {
-		index = thisNodeIndex
-	} else {
-		index = thisNodeIndex - 1
-	}
-
-	mergedNode.keys[mergedNode.length] = this.parent.keys[index]
-
-	for i := index; i < 2*this.T-1; i++ {
-		if this.parent.keys[i] == 0 {
-			break
+	// Potomci pravého uzlu
+	if !left.isLeaf {
+		for i := 0; i <= right.length; i++ {
+			left.childrens[left.length+1+i] = right.childrens[i]
+			left.childrens[left.length+1+i].parent = left
 		}
+	}
 
+	left.length += right.length + 1
+
+	// Odebrání separátoru a pravého uzlu z rodiče
+	for i := leftIndex; i < this.parent.length-1; i++ {
 		this.parent.keys[i] = this.parent.keys[i+1]
 	}
+	this.parent.keys[this.parent.length-1] = 0
 
-	mergedNode.length++
-}
-
-func (this node) MoveParentChildrens(startIndex int) {
-	for i := startIndex; i < 2*this.T-1; i++ {
+	for i := leftIndex + 1; i < this.parent.length; i++ {
 		this.parent.childrens[i] = this.parent.childrens[i+1]
 	}
+	this.parent.childrens[this.parent.length] = nil
+
+	this.parent.length--
 }
 
-func (this node) MargeTwoNodes(leftSibling bool, thisNodeIndex int) {
-	mergedNode := NewBtreeNode(this.T, this.isLeaf)
-	mergedNode.parent = this.parent
-
-	if !leftSibling {
-		this.InsertThisNode(mergedNode)
-		this.InsertParentKey(mergedNode, leftSibling, thisNodeIndex)
-		this.InsertSiblig(mergedNode, leftSibling, thisNodeIndex)
-
-		this.parent.childrens[thisNodeIndex] = mergedNode
-		this.MoveParentChildrens(thisNodeIndex + 1)
-	} else {
-		this.InsertSiblig(mergedNode, leftSibling, thisNodeIndex)
-		this.InsertParentKey(mergedNode, leftSibling, thisNodeIndex)
-		this.InsertThisNode(mergedNode)
-
-		this.parent.childrens[thisNodeIndex-1] = mergedNode
-		this.MoveParentChildrens(thisNodeIndex)
-	}
+// Smaže klíč na pozici index a zbalancuje strom směrem ke kořeni.
+func (this *node) Delete(index int) {
+	this.DeletePhaseOne(index).DeletePhaseTwo()
 }
 
-func (this node) Delete(index int) {
-	this.DeletePhaseOne(index)
-	this.DeletePhaseTwo()
-}
-
-func (this node) DeletePhaseOne(index int) int {
+// Odstraní klíč a vrátí list, ve kterém došlo k fyzickému odebrání.
+func (this *node) DeletePhaseOne(index int) *node {
 	if this.isLeaf {
 		return this.DeleteFromLeaf(index)
 	} else {
@@ -288,69 +244,91 @@ func (this node) DeletePhaseOne(index int) int {
 	}
 }
 
-func (this node) DeleteFromLeaf(index int) int {
-	temp := this.keys[index]
-
+func (this *node) DeleteFromLeaf(index int) *node {
 	for i := index; i < this.length-1; i++ {
 		this.keys[i] = this.keys[i+1]
 	}
 
 	this.length--
+	this.keys[this.length] = 0
 
-	for i := this.length; i < 2*this.T-1; i++ {
-		if this.keys[i] == 0 {
-			break
+	return this
+}
+
+func (this *node) DeleteFromNoLeaf(index int) *node {
+	// Klíč nahradíme předchůdcem (maximum levého podstromu)
+	maxNode := this.childrens[index]
+
+	for !maxNode.isLeaf {
+		maxNode = maxNode.childrens[maxNode.length]
+	}
+
+	this.keys[index] = maxNode.GetLastKey()
+
+	return maxNode.DeleteFromLeaf(maxNode.GetLastKeyIndex())
+}
+
+// Přesune klíč ze sourozence přes rodiče do tohoto uzlu.
+func (this *node) MoveKeyOverParent(leftSibling bool, thisNodeIndex int) {
+	if leftSibling {
+		sibling := this.parent.childrens[thisNodeIndex-1]
+		keyIndex := thisNodeIndex - 1
+
+		for i := this.length; i > 0; i-- {
+			this.keys[i] = this.keys[i-1]
 		}
 
-		this.keys[i] = 0
-	}
+		this.keys[0] = this.parent.keys[keyIndex]
 
-	return temp
-}
+		if !this.isLeaf {
+			for i := this.length + 1; i > 0; i-- {
+				this.childrens[i] = this.childrens[i-1]
+			}
 
-func (this node) DeleteFromNoLeaf(index int) int {
-	temp := this.keys[index]
+			// Poslední potomek sourozence přejde na začátek
+			this.childrens[0] = sibling.childrens[sibling.length]
+			this.childrens[0].parent = this
+			sibling.childrens[sibling.length] = nil
+		}
 
-	key, _ := this.childrens[index].FindMaxKey()
-	node, i := this.Search(key)
-	this.keys[index] = key
-
-	node.Delete(i)
-
-	return temp
-}
-
-func (this node) MoveKeyOverParent(leftSibling bool, thisNodeIndex int) {
-	var siblingIndex int
-	var siblingKeyIndex int
-	var keyIndex int
-
-	if leftSibling {
-		siblingIndex = thisNodeIndex - 1
-		siblingKeyIndex = this.parent.childrens[siblingIndex].GetLastChildrenIndex()
-		keyIndex = thisNodeIndex - 1
+		this.parent.keys[keyIndex] = sibling.keys[sibling.length-1]
+		sibling.keys[sibling.length-1] = 0
+		sibling.length--
+		this.length++
 	} else {
-		siblingIndex = thisNodeIndex + 1
-		siblingKeyIndex = this.parent.childrens[siblingIndex].GetFirstKeyIndex()
-		keyIndex = thisNodeIndex
+		sibling := this.parent.childrens[thisNodeIndex+1]
+		keyIndex := thisNodeIndex
+
+		this.keys[this.length] = this.parent.keys[keyIndex]
+
+		if !this.isLeaf {
+			// První potomek sourozence přejde na konec
+			this.childrens[this.length+1] = sibling.childrens[0]
+			this.childrens[this.length+1].parent = this
+		}
+
+		this.parent.keys[keyIndex] = sibling.keys[0]
+
+		for i := 0; i < sibling.length-1; i++ {
+			sibling.keys[i] = sibling.keys[i+1]
+		}
+		sibling.keys[sibling.length-1] = 0
+
+		if !sibling.isLeaf {
+			for i := 0; i < sibling.length; i++ {
+				sibling.childrens[i] = sibling.childrens[i+1]
+			}
+			sibling.childrens[sibling.length] = nil
+		}
+
+		sibling.length--
+		this.length++
 	}
-
-	this.InsertInOrder(this.parent.keys[keyIndex])
-
-	for i := this.GetLastChildrenIndex(); i < 2*this.T-1; i++ {
-		/* this.childrens[i] = this.childrens[i] */
-	}
-
-	// Přelití posledního potomka sourozence
-	this.childrens[0] = this.parent.childrens[siblingIndex].GetLastChildren()
-	this.parent.childrens[siblingIndex].childrens[this.GetLastChildrenIndex()] = nil
-
-	this.parent.keys[keyIndex] = this.parent.childrens[siblingIndex].DeletePhaseOne(siblingKeyIndex)
 }
 
-func (this node) IndexOf() int {
-	for i := 0; i < len(this.childrens); i++ {
-		if reflect.DeepEqual(this.childrens[i], this) {
+func (this *node) IndexOf() int {
+	for i := 0; i <= this.parent.length; i++ {
+		if this.parent.childrens[i] == this {
 			return i
 		}
 	}
@@ -358,8 +336,9 @@ func (this node) IndexOf() int {
 	return -1
 }
 
-func (this node) DeletePhaseTwo() {
+func (this *node) DeletePhaseTwo() {
 	// 1.
+	// Kořen může mít libovolný počet klíčů
 	if this.parent == nil || this.length >= this.T-1 {
 		return
 	}
@@ -371,24 +350,24 @@ func (this node) DeletePhaseTwo() {
 	if thisNodeIndex > 0 && this.parent.childrens[thisNodeIndex-1].length > this.T-1 {
 		this.MoveKeyOverParent(true, thisNodeIndex)
 		return
+	}
 
-		// Pravý sourozenec
-	} else if thisNodeIndex < 2*this.T && this.parent.childrens[thisNodeIndex+1] != nil && this.parent.childrens[thisNodeIndex+1].length > this.T-1 {
+	// Pravý sourozenec
+	if thisNodeIndex < this.parent.length && this.parent.childrens[thisNodeIndex+1].length > this.T-1 {
 		this.MoveKeyOverParent(false, thisNodeIndex)
 		return
 	}
 
 	// 3.
 	// Pravý sourozenec
-	if thisNodeIndex >= 0 && thisNodeIndex < 2*this.T && this.parent.childrens[thisNodeIndex+1] != nil && this.parent.childrens[thisNodeIndex+1].length >= this.T-1 {
+	if thisNodeIndex < this.parent.length {
 		this.MargeTwoNodes(false, thisNodeIndex)
-		this.parent.DeletePhaseTwo()
-
+	} else {
 		// Levý sourozenec
-	} else if thisNodeIndex > 0 && thisNodeIndex <= 2*this.T && this.parent.childrens[thisNodeIndex-1].length >= this.T-1 {
 		this.MargeTwoNodes(true, thisNodeIndex)
-		this.parent.DeletePhaseTwo()
 	}
+
+	this.parent.DeletePhaseTwo()
 }
 
 type tree struct {
@@ -396,23 +375,21 @@ type tree struct {
 	root *node // kořenový uzel
 }
 
-func NewBtree(t int) tree {
+func NewBtree(t int) *tree {
 	if t < 2 {
 		panic(errors.New("t cannot be less than 2"))
 	}
 
-	return tree{
+	return &tree{
 		T:    t,
 		root: NewBtreeNode(t, true),
 	}
 }
 
-func (this tree) Insert(key int) {
+func (this *tree) Insert(key int) {
 	root := this.root
 
-	if root.length == 0 {
-		root.InsertInOrder(key)
-	} else if root.length == 2*this.T-1 {
+	if root.length == 2*this.T-1 {
 		var newNode = NewBtreeNode(this.T, false)
 		newNode.childrens[0] = root
 		this.root = newNode
@@ -425,20 +402,15 @@ func (this tree) Insert(key int) {
 	}
 }
 
-func (this tree) Search(key int) (*node, int) {
+func (this *tree) Search(key int) (*node, int) {
 	return this.root.Search(key)
 }
 
-func (this tree) FindMaxKey() (int, int) {
+func (this *tree) FindMaxKey() (int, int) {
 	return this.root.FindMaxKey()
 }
 
-func (this tree) Delete(key int) int {
-	// Tree is empty
-	if this.root.length == 0 {
-		return -1
-	}
-
+func (this *tree) Delete(key int) int {
 	node, index := this.Search(key)
 
 	// Node not found
@@ -447,6 +419,12 @@ func (this tree) Delete(key int) int {
 	}
 
 	node.Delete(index)
+
+	// Kořen bez klíčů a s jedním potomkem se zruší
+	if this.root.length == 0 && !this.root.isLeaf {
+		this.root = this.root.childrens[0]
+		this.root.parent = nil
+	}
 
 	return key
 }
