@@ -36,6 +36,18 @@ Three small assignments for an operating systems course, each in one C file:
 - `petrzela-tomas-3-lin.c`: a dotted pair allocator for Lisp
   (`lalloc` / `lfree`).
 
+### Running tests
+
+Tests live in `os2/tests/` (plain C with a tiny assert harness, plus a shell
+script that drives `pgmtoascii` as a black box on the fixtures). The original
+sources are not modified. From `os2/`:
+
+```sh
+make test            # build and run all tests
+make test-sanitize   # same, with AddressSanitizer + UBSan
+make test-tsan       # pipe tests with ThreadSanitizer
+```
+
 ## dpll
 
 - Original: https://github.com/Thomasparsley/dpll
