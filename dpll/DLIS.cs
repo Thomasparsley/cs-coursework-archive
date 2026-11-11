@@ -5,10 +5,13 @@ class DLIS : DPLL, IDPLL
     public new (bool, long) Solve() => Solve((formula) =>
     {
         var occurrences = formula.NumberOfOccurrencesOfLiterals();
-        var first = occurrences.OrderBy(x => x.Value).ToDictionary(x => x.Key, x => x.Value).First();
-        var literal = first.Key;
+        var best = occurrences.First();
 
-        return literal;
+        foreach (var item in occurrences)
+            if (item.Value > best.Value)
+                best = item;
+
+        return best.Key;
     });
 
     public string HeuristicName()

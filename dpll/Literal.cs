@@ -21,6 +21,9 @@ class Literal
         return this.variable.Equals(other.variable) && this.isTrue == other.isTrue;
     }
 
+    public override bool Equals(object? obj) => obj is Literal other && Equals(other);
+    public override int GetHashCode() => HashCode.Combine(variable.ID, isTrue);
+
     public void Print()
     {
         if (!isTrue)

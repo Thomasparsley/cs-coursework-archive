@@ -14,23 +14,21 @@ class Formula
         }
     }
 
-    private bool SkipChar(char ch) =>
-    ch switch
-    {
-        'c' => true,
-        'p' => false,
-        '%' => true,
-        '0' => true,
-        _ => false,
-    };
-
     private Formula() { }
     public Formula(string[] cnf)
     {
-        foreach (var line in cnf)
+        var clause = new Clause();
+
+        foreach (var rawLine in cnf)
         {
-            if (line.Length == 0 || SkipChar(line[0]))
+            var line = rawLine.Trim();
+
+            if (line.Length == 0 || line[0] == 'c')
                 continue;
+
+            // SATLIB files end with a "%" line followed by "0".
+            if (line[0] == '%')
+                break;
 
             if (line[0] == 'p')
             {
@@ -38,39 +36,34 @@ class Formula
                 continue;
             }
 
-            var clause = new Clause();
-
-            foreach (var literalString in line.Split(" "))
+            var tokens = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var token in tokens)
             {
-                if (string.IsNullOrEmpty(literalString))
+                var value = Int64.Parse(token);
+
+                if (value == 0)
+                {
+                    clause.literals.Reverse();
+                    clauses.Add(clause);
+                    clause = new Clause();
                     continue;
-                else if (literalString == "0")
-                    continue;
-
-                var isTrue = true;
-                var literalValue = literalString;
-                if (literalValue[0] == '-')
-                {
-                    isTrue = false;
-                    literalValue = literalValue.Remove(0, 1);
                 }
 
-                var ID = Int64.Parse(literalValue);
+                var ID = Math.Abs(value);
 
-                Variable variable;
-                try
+                if (!variables.TryGetValue(ID, out var variable))
                 {
-                    variable = variables[ID];
-                }
-                catch (KeyNotFoundException)
-                {
-                    variables[ID] = new Variable(ID);
-                    variable = variables[ID];
+                    variable = new Variable(ID);
+                    variables[ID] = variable;
                 }
 
-                clause.Add(new Literal(isTrue, variable));
+                clause.Add(new Literal(value > 0, variable));
             }
+        }
 
+        // Tolerate a missing final "0".
+        if (clause.literals.Count > 0)
+        {
             clause.literals.Reverse();
             clauses.Add(clause);
         }
@@ -146,7 +139,7 @@ class Formula
     {
         return new Formula()
         {
-            clauses = new List<Clause>(this.clauses),
+            clauses = this.clauses.Select(c => new Clause { literals = new Literals(c.literals) }).ToList(),
             variables = new Dictionary<long, Variable>(this.variables)
         };
     }
@@ -156,11 +149,9 @@ class Formula
     public static Formula operator & (Formula formula, Literal literal)
     {
         var f = formula.Clone();
-        
-        if (literal.isTrue)
-            f = DPLL.UnitSubsumpion(f, literal);
-        else
-            f = DPLL.UnitResolution(f, literal);
+
+        f = DPLL.UnitSubsumpion(f, literal);
+        f = DPLL.UnitResolution(f, literal);
 
         return f;
     }
@@ -168,15 +159,9 @@ class Formula
     public Dictionary<Literal, int> NumberOfOccurrencesOfLiterals()
     {
         var result = new Dictionary<Literal, int>();
-        var flatten = DPLL.FlattenFormula(this);
-        var distinctFlatten = flatten.Distinct().ToList();
 
-
-        foreach (var literal in distinctFlatten)
-        {
-            var count = flatten.Count(l => (l.Equals(literal)));
-            result.Add(literal, count);
-        }
+        foreach (var literal in DPLL.FlattenFormula(this))
+            result[literal] = result.GetValueOrDefault(literal) + 1;
 
         return result;
     }

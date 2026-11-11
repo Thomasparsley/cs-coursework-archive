@@ -16,6 +16,9 @@ class Variable
         return this.ID == other.ID;
     }
 
+    public override bool Equals(object? obj) => obj is Variable other && Equals(other);
+    public override int GetHashCode() => ID.GetHashCode();
+
     public void Print()
     {
         System.Console.Write(ID);

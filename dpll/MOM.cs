@@ -4,31 +4,37 @@ class MOM : DPLL, IDPLL
 
     public new (bool, long) Solve() => Solve((formula) =>
     {
-        var result = new Dictionary<Literal, int>();
+        var minSize = formula.clauses.Min(c => c.literals.Count);
+        var weight = 1L << Math.Min(minSize, 40);
 
-        var flatten = DPLL.FlattenFormula(formula);
-        var p = flatten.Count * flatten.Count + 1;
-        var shortest = formula.ShortestClause();
+        var f = new Dictionary<Literal, long>();
+        foreach (var clause in formula.clauses)
+            if (clause.literals.Count == minSize)
+                foreach (var l in clause.literals)
+                    f[l] = f.GetValueOrDefault(l) + 1;
 
-        Literal maxLiteral = shortest.literals.First();
-        var maxLiteralValue = long.MinValue;
+        Literal? best = null;
+        var bestScore = long.MinValue;
+        var bestPositive = 0L;
+        var bestNegative = 0L;
 
-        foreach(var l in flatten.Where(x => shortest.literals.Contains(x)))
+        foreach (var l in f.Keys)
         {
-            var l1 = l.variable.ID;
-#pragma warning disable CS8602
-            var l2 = shortest.Contains(-l) ? shortest.literals.Find(x => x.Equals(-l)).variable.ID : 0;
-#pragma warning restore CS8602
+            var positive = l.Abs();
+            var a = f.GetValueOrDefault(positive);
+            var b = f.GetValueOrDefault(positive.Not());
 
-            var num = (l1 + l2) * p + l1 * l2;
-            if (num > maxLiteralValue)
+            var score = (a + b) * weight + a * b;
+            if (score > bestScore)
             {
-                maxLiteralValue = num;
-                maxLiteral = l;
+                bestScore = score;
+                best = positive;
+                bestPositive = a;
+                bestNegative = b;
             }
         }
 
-        return maxLiteral;
+        return bestPositive >= bestNegative ? best! : best!.Not();
     });
 
     public string HeuristicName()
