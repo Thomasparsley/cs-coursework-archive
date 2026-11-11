@@ -108,14 +108,20 @@
 //
 #define STD_OUT false
 
-#include <math.h>
+#if defined(__linux__) || defined(__unix__) || defined(__APPLE__)
+#define PGM_POSIX 1
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 
-#ifdef linux
+#ifdef PGM_POSIX
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -123,7 +129,6 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#include <tchar.h>
 #endif
 
 #define P2_MARKER "P2"
@@ -138,7 +143,7 @@
 
 #define SYMBOL_COMMENT "#"
 #define SYMBOL_SPACE " "
-#ifdef linux
+#ifdef PGM_POSIX
 #define SYMBOL_NEW_LINE "\n"
 #define SYMBOL_NEW_LINE_LEN 1
 #endif
@@ -153,7 +158,7 @@
 
 #define is_marrker_correct(marker) (strcmp(marker, P2_MARKER) == 0)
 
-#ifdef linux
+#ifdef PGM_POSIX
 #define error(message) \
     printf(message);   \
     exit(1);
@@ -163,10 +168,10 @@
 #endif
 #ifdef _WIN32
 #define error(message) \
-    _tprintf(message); \
+    printf(message);   \
     exit(1);
-#define errorf(message, ...)            \
-    _tprintf(_T(message), __VA_ARGS__); \
+#define errorf(message, ...)      \
+    printf(message, __VA_ARGS__); \
     exit(1);
 #endif
 
@@ -184,6 +189,7 @@ typedef struct
     int x;
     uint16_t y;
     uint16_t n;
+    size_t data_offset; // offset of the first byte after the header
 } pgm_header;
 
 typedef struct
@@ -229,21 +235,31 @@ bool is_charset_length_correct(uint16_t n, char *char_set)
     return n + 1 == count_char_set_input(char_set);
 }
 
-double length_of_number(uint16_t number)
-{
-    return floor(log10(number)) + 1;
-}
-
 file read_file(char *input_file)
 {
     file file;
 
-#ifdef linux
+#ifdef PGM_POSIX
     // Open the file
     int fd = open(input_file, O_RDONLY);
+    if (fd < 0)
+    {
+        perror("Error: Could not open input file");
+        exit(1);
+    }
 
     // Get the size of the file
-    size_t size = lseek(fd, 0, SEEK_END);
+    off_t end = lseek(fd, 0, SEEK_END);
+    if (end < 0)
+    {
+        perror("Error: Could not get size of input file");
+        exit(1);
+    }
+    size_t size = (size_t)end;
+    if (size == 0)
+    {
+        error("Error: Input file is empty \n");
+    }
 
     // Map file to memory
     char *buffer = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
@@ -253,23 +269,24 @@ file read_file(char *input_file)
     }
 
     // Copy the file to a char array
-    char *data = malloc(size * sizeof(char));
+    char *data = malloc(size + 1);
     if (data == NULL)
     {
         error("Error: Could not allocate memory \n");
     }
 
     memcpy(data, buffer, size);
+    data[size] = '\0';
 
     // Close the file
     munmap(buffer, size);
     close(fd);
 #endif
 #ifdef _WIN32
-    TCHAR *inputFile = _T(input_file);
+    char *inputFile = input_file;
 
     // Open the file for read
-    HANDLE hFile = CreateFile(
+    HANDLE hFile = CreateFileA(
         inputFile,
         GENERIC_READ,
         FILE_SHARE_READ,
@@ -301,7 +318,7 @@ file read_file(char *input_file)
     }
 
     // Malloc buffer
-    char *data = malloc(dwFileSize * sizeof(char));
+    char *data = malloc((size_t)dwFileSize + 1);
     if (data == NULL)
     {
         UnmapViewOfFile(lpFileBase);
@@ -309,10 +326,11 @@ file read_file(char *input_file)
         CloseHandle(hFile);
         errorf("Unable to allocate memory for file: %s\n", inputFile);
     }
-    int size = dwFileSize;
+    size_t size = dwFileSize;
 
     // Copy file to a char array
     memcpy(data, lpFileBase, size);
+    data[size] = '\0';
 
     // Close file
     UnmapViewOfFile(lpFileBase);
@@ -326,6 +344,54 @@ file read_file(char *input_file)
     return file;
 }
 
+// Read next header token. Skips whitespace and comments (# to end of line).
+// Returns false when there is no further token.
+static bool next_header_token(file input_file, size_t *pos, char *token, size_t token_size)
+{
+    size_t i = *pos;
+    const char *d = input_file.data;
+
+    for (;;)
+    {
+        while (i < input_file.size && (char_is_space(d[i]) || char_is_newline(d[i])))
+            i++;
+        if (i < input_file.size && char_is_comment(d[i]))
+        {
+            while (i < input_file.size && d[i] != '\n' && d[i] != '\r')
+                i++;
+            continue;
+        }
+        break;
+    }
+
+    size_t len = 0;
+    while (i < input_file.size && !char_is_space(d[i]) && !char_is_newline(d[i]) && !char_is_comment(d[i]))
+    {
+        if (len + 1 >= token_size)
+        {
+            error("Error: Header token is too long \n");
+        }
+        token[len++] = d[i++];
+    }
+    token[len] = '\0';
+    *pos = i;
+
+    return len > 0;
+}
+
+// Parse a header number in range min..max
+static long parse_header_number(const char *token, long min, long max)
+{
+    char *end = NULL;
+    long value = strtol(token, &end, 10);
+    if (end == token || *end != '\0' || value < min || value > max)
+    {
+        errorf("Error: Invalid value in the header: %s \n", token);
+    }
+
+    return value;
+}
+
 // Read the header of the pgm file
 pgm_header *read_pgm_header(file input_file)
 {
@@ -335,26 +401,36 @@ pgm_header *read_pgm_header(file input_file)
         error("Error: Could not allocate memory for header \n");
     }
 
-    // read the marker
-    char *marker = strtok(strdup(input_file.data), SYMBOL_NEW_LINE);
+    char token[MAX_LEN_SIZE];
+    size_t pos = 0;
 
-    // check if the marker is correct
-    if (marker == NULL || !is_marrker_correct(marker))
+    // read the marker
+    if (!next_header_token(input_file, &pos, token, sizeof(token)) || !is_marrker_correct(token))
         file_marker_is_wrong(P2_MARKER);
-    else
-        header->marker = marker;
+    header->marker = P2_MARKER;
 
     // read the x
-    char *x = strtok(NULL, SYMBOL_SPACE);
-    (*header).x = atoi(x);
+    if (!next_header_token(input_file, &pos, token, sizeof(token)))
+    {
+        error("Error: Header is incomplete \n");
+    }
+    header->x = (int)parse_header_number(token, 1, 65535);
 
     // read the y
-    char *y = strtok(NULL, SYMBOL_NEW_LINE);
-    (*header).y = atoi(y);
+    if (!next_header_token(input_file, &pos, token, sizeof(token)))
+    {
+        error("Error: Header is incomplete \n");
+    }
+    header->y = (uint16_t)parse_header_number(token, 1, 65535);
 
     // read the n
-    char *n = strtok(NULL, SYMBOL_NEW_LINE);
-    (*header).n = atoi(n);
+    if (!next_header_token(input_file, &pos, token, sizeof(token)))
+    {
+        error("Error: Header is incomplete \n");
+    }
+    header->n = (uint16_t)parse_header_number(token, 0, 65535);
+
+    header->data_offset = pos;
 
     return header;
 }
@@ -379,12 +455,21 @@ pgm read_pgm(char *input_file_path)
 
 void write_file(char *output_file, char *data, size_t size)
 {
-#ifdef linux
+#ifdef PGM_POSIX
     // Create the file
     int fd = open(output_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    if (fd < 0)
+    {
+        perror("Error: Could not open output file");
+        exit(1);
+    }
 
     // Set the size of the file
-    ftruncate(fd, size);
+    if (ftruncate(fd, (off_t)size) != 0)
+    {
+        perror("Error: Could not set size of output file");
+        exit(1);
+    }
 
     // Map file to memory
     char *buffer = mmap(NULL, size, PROT_WRITE, MAP_SHARED, fd, 0);
@@ -394,7 +479,7 @@ void write_file(char *output_file, char *data, size_t size)
     }
 
     // Write to the file
-    strcpy(buffer, data);
+    memcpy(buffer, data, size);
 
     // Unmap the file
     munmap(buffer, size);
@@ -402,7 +487,7 @@ void write_file(char *output_file, char *data, size_t size)
 #endif
 #ifdef _WIN32
     // Create the file
-    HANDLE hFile = CreateFile(
+    HANDLE hFile = CreateFileA(
         output_file,
         GENERIC_READ | GENERIC_WRITE,
         FILE_SHARE_READ,
@@ -442,29 +527,77 @@ void write_file(char *output_file, char *data, size_t size)
 #endif
 }
 
-int calc_header_size(pgm_header *header)
+typedef struct
 {
-    int x = length_of_number(header->x);
-    int y = length_of_number(header->y);
-    int n = length_of_number(header->n);
+    char *output;
+    size_t idx;
+    size_t pixels;
+    size_t total_pixels;
+    int x;
+    int column;
+    int n;
+    char *char_set;
+    int char_set_length;
+} converter;
 
-    return strlen(header->marker) +
-           SYMBOL_NEW_LINE_LEN +
-           x +
-           SYMBOL_NEW_LINE_LEN +
-           y +
-           SYMBOL_NEW_LINE_LEN +
-           n +
-           SYMBOL_NEW_LINE_LEN;
+// Append one pixel to the output; end the row after x pixels
+static void emit_pixel(converter *c, long value)
+{
+    if (value < 0 || value > c->n || value >= c->char_set_length)
+        over_scale_charset();
+
+    if (c->pixels >= c->total_pixels)
+    {
+        error("Error: The file contains more pixels than the header says \n");
+    }
+
+    c->output[c->idx++] = c->char_set[value];
+    c->pixels++;
+    if (++c->column == c->x)
+    {
+        memcpy(c->output + c->idx, SYMBOL_NEW_LINE, SYMBOL_NEW_LINE_LEN);
+        c->idx += SYMBOL_NEW_LINE_LEN;
+        c->column = 0;
+    }
 }
 
-void convert_pgm_to_ascii(pgm pgm, char *char_set, char *output)
+// Convert pending token (if any) to a pixel
+static void flush_token(converter *c, char *buffer, int *idx_buffer)
 {
-    int header_size = calc_header_size(pgm.header);
-    int char_set_length = count_char_set_input(char_set);
+    if (*idx_buffer == 0)
+        return;
 
-    int idx = 0;
-    int idx_char_set = 0;
+    buffer[*idx_buffer] = '\0';
+    *idx_buffer = 0;
+
+    char *end = NULL;
+    long value = strtol(buffer, &end, 10);
+    if (end == buffer || *end != '\0')
+    {
+        error("Error: Could not convert buffer to int \n");
+    }
+
+    emit_pixel(c, value);
+}
+
+// Returns the number of bytes written to output
+size_t convert_pgm_to_ascii(pgm pgm, char *char_set, char *output)
+{
+    converter c;
+    c.output = output;
+    c.idx = 0;
+    c.pixels = 0;
+    c.total_pixels = (size_t)pgm.header->x * pgm.header->y;
+    c.x = pgm.header->x;
+    c.column = 0;
+    c.n = pgm.header->n;
+    c.char_set = char_set;
+    c.char_set_length = (int)count_char_set_input(char_set);
+
+    // With at most 10 gray levels every digit is one pixel, so pixels do not
+    // have to be separated by spaces.
+    bool single_digit = pgm.header->n <= 9;
+
     bool is_in_comment = false;
     int idx_buffer = 0;
     char *buffer = malloc(MAX_LEN_SIZE * sizeof(char));
@@ -473,65 +606,59 @@ void convert_pgm_to_ascii(pgm pgm, char *char_set, char *output)
         error("Error: Could not allocate memory for buffer \n");
     }
 
-    for (int i = header_size; i < pgm.file.size; i++)
+    for (size_t i = pgm.header->data_offset; i < pgm.file.size; i++)
     {
-        char c = pgm.file.data[i];
-        bool is_newline = char_is_newline(c);
-        bool is_comment = char_is_comment(c);
-        bool is_space = char_is_space(c);
+        char ch = pgm.file.data[i];
 
-        if (is_newline)
+        if (char_is_newline(ch))
         {
             is_in_comment = false;
-            if (c == '\n')
-            {
-                output[idx] = '\n';
-                idx++;
-            }
-
-            // reset buffer
-            idx_buffer = 0;
-
-            continue;
+            flush_token(&c, buffer, &idx_buffer);
         }
         else if (is_in_comment)
         {
             continue;
         }
-
-        if (is_comment)
+        else if (char_is_comment(ch))
         {
             is_in_comment = true;
-            continue;
+            flush_token(&c, buffer, &idx_buffer);
         }
-        else if (is_space)
+        else if (char_is_space(ch))
         {
-            idx_char_set = 0;
-            int err = sscanf(buffer, "%d", &idx_char_set);
-            if (err == 0)
+            flush_token(&c, buffer, &idx_buffer);
+        }
+        else if (ch >= '0' && ch <= '9')
+        {
+            if (single_digit)
             {
-                error("Error: Could not convert buffer to int \n");
+                emit_pixel(&c, ch - '0');
             }
-
-            if (idx_char_set >= char_set_length)
-                over_scale_charset();
-
-            char char_to_set = char_set[idx_char_set];
-            err = sscanf(&char_to_set, "%c", &output[idx]);
-            if (err == 0)
+            else
             {
-                error("Error: Could not convert char to char \n");
+                // a pixel value has at most 5 digits
+                if (idx_buffer >= 6)
+                {
+                    error("Error: Pixel value is too long \n");
+                }
+                buffer[idx_buffer++] = ch;
             }
-
-            idx++;
-            idx_buffer = 0;
         }
         else
         {
-            buffer[idx_buffer] = c;
-            idx_buffer++;
+            error("Error: Invalid character in pixel data \n");
         }
     }
+    flush_token(&c, buffer, &idx_buffer);
+
+    free(buffer);
+
+    if (c.pixels != c.total_pixels)
+    {
+        error("Error: The file contains fewer pixels than the header says \n");
+    }
+
+    return c.idx;
 }
 
 int main(int argc, char *argv[])
@@ -561,25 +688,31 @@ int main(int argc, char *argv[])
     }
 
     // prepare the output buffer
-    size_t output_buffer_size = (pgm.header->x * pgm.header->y - 2) * sizeof(char);
-    char *output_buffer = malloc(output_buffer_size);
+    size_t output_buffer_size = ((size_t)pgm.header->x + SYMBOL_NEW_LINE_LEN) * pgm.header->y;
+    char *output_buffer = malloc(output_buffer_size + 1);
+    if (output_buffer == NULL)
+    {
+        error("Error: Could not allocate memory for output \n");
+    }
 
 #if STD_OUT
     printf("\n\nLength of output buffer: %d\n\n", pgm.header->x * pgm.header->y);
 #endif
 
-    convert_pgm_to_ascii(pgm, arg_char_set, output_buffer);
+    size_t output_size = convert_pgm_to_ascii(pgm, arg_char_set, output_buffer);
+    output_buffer[output_size] = '\0';
 
 #if STD_OUT
     printf("ASCII output:\n%s\n\n", output_buffer);
 #endif
 
     // write the output file
-    write_file(arg_output_file_path, output_buffer, output_buffer_size);
+    write_file(arg_output_file_path, output_buffer, output_size);
 
     // free memory
     free(output_buffer);
     free(pgm.header);
+    free(pgm.file.data);
 
     return 0;
 }
