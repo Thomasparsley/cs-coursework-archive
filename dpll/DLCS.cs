@@ -4,39 +4,31 @@ class DLCS : DPLL, IDPLL
 
     public new (bool, long) Solve() => Solve((formula) =>
     {
-        var result = new Dictionary<Literal, int>();
         var occurrences = formula.NumberOfOccurrencesOfLiterals();
+
+        Literal best = occurrences.First().Key.Abs();
+        var bestTotal = -1;
+        var bestPositive = 0;
+        var bestNegative = 0;
 
         foreach (var item in occurrences)
         {
-            var count = item.Value;
-            Literal key;
-            if (!item.Key.isTrue)
-                key = item.Key.Not();
-            else
-                key = item.Key;
+            var positive = item.Key.Abs();
+            var negative = positive.Not();
 
-            if (!result.ContainsKey(key))
-                result.Add(key, count);
-            else
-                result[key] += count;
+            var a = occurrences.GetValueOrDefault(positive);
+            var b = occurrences.GetValueOrDefault(negative);
+
+            if (a + b > bestTotal)
+            {
+                best = positive;
+                bestTotal = a + b;
+                bestPositive = a;
+                bestNegative = b;
+            }
         }
 
-        var first = result.OrderBy(x => x.Value).ToDictionary(x => x.Key, x => x.Value).First();
-        var literal = first.Key;
-
-        var a = 0;
-        if (occurrences.ContainsKey(literal.Abs()))
-            a = occurrences[literal];
-
-        var b = 0;
-        if (occurrences.ContainsKey(literal.Abs().Not()))
-            b = occurrences[literal.Abs().Not()];
-
-        if (a >= b)
-            return literal.Abs();
-
-        return literal.Abs().Not();
+        return bestPositive >= bestNegative ? best : best.Not();
     });
 
     public string HeuristicName()

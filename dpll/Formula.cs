@@ -159,15 +159,9 @@ class Formula
     public Dictionary<Literal, int> NumberOfOccurrencesOfLiterals()
     {
         var result = new Dictionary<Literal, int>();
-        var flatten = DPLL.FlattenFormula(this);
-        var distinctFlatten = flatten.Distinct().ToList();
 
-
-        foreach (var literal in distinctFlatten)
-        {
-            var count = flatten.Count(l => (l.Equals(literal)));
-            result.Add(literal, count);
-        }
+        foreach (var literal in DPLL.FlattenFormula(this))
+            result[literal] = result.GetValueOrDefault(literal) + 1;
 
         return result;
     }
