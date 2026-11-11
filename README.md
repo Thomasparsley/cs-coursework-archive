@@ -61,6 +61,15 @@ Credit project for a data structures course with two parts:
   min tree, extract min, decrease key), with optional tree printing via the
   `ete3` package.
 
+### Running tests
+
+The red-black tree has a [TUnit](https://github.com/thomhurst/TUnit) test
+project in `dast/rbtree.Tests/` (needs a .NET 9 SDK):
+
+```sh
+dotnet run --project dast/rbtree.Tests/rbtree.Tests.csproj
+```
+
 ## binomial-heap
 
 - Original: https://github.com/Thomasparsley/binomial-heap
