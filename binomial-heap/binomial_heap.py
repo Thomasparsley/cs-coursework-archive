@@ -38,31 +38,51 @@ class BinomialHeap:
         Delete a node from the heap.
 
         """
-        self.decrease_key(node, -1.0*float("inf"))
-        return self.extract_min()
+        tree, found = self._locate(node)
+
+        if found is None:
+            return None
+
+        # move the node to the root of its tree, whatever the other keys are
+        found.key = -1.0*float("inf")
+        while found.parent is not None:
+            found.swap_with_parent()
+        tree.root = found
+
+        self.heap.remove(tree)
+        return self._extract_tree(tree)
 
     def union(self, other: "BinomialHeap") -> "BinomialHeap":
         """
         Return the union of two binomial heaps.
 
+        The union is destructive: the trees are moved into the returned heap
+        and both operands are left empty. Do not use them afterwards.
+
         """
         new_heap = BinomialHeap()
         new_heap.heap.extend(self.heap)
-        new_heap.heap.extend(other.heap)
+        if other is not self:
+            new_heap.heap.extend(other.heap)
+        self.heap = []
+        other.heap = []
         new_heap.heap.sort(key=lambda tree: tree.degree)
 
         # since when unioning two heaps there may be a situation when there are
         # two or more trees with the same degree in the heap, it is necessary
         # to merge these trees
         i = 0
-        heap_len = len(new_heap.heap)
-        while i < heap_len - 1:
-            if new_heap.heap[i].degree == new_heap.heap[i + 1].degree:
-                new_heap.heap[i].merge(new_heap.heap[i + 1])
-                del new_heap.heap[i + 1]
-                heap_len -= 1
-            else:
+        while i < len(new_heap.heap) - 1:
+            trees = new_heap.heap
+            if trees[i].degree != trees[i + 1].degree:
                 i += 1
+            elif i + 2 < len(trees) and trees[i + 2].degree == trees[i].degree:
+                # three trees of the same degree: keep the first one and
+                # merge the other two, the result is the carry
+                i += 1
+            else:
+                trees[i].merge(trees[i + 1])
+                del trees[i + 1]
 
         new_heap.heap.sort(key=lambda tree: tree.degree)
         return new_heap
@@ -72,12 +92,22 @@ class BinomialHeap:
         Return the node in the heap.
 
         """
-        for tree in self.heap:
-            finded_node = tree.find_node(node)
-            if finded_node is not None:
-                return finded_node
+        return self._locate(node)[1]
 
-        return None
+    def _locate(self, node: "BinomialNode"):
+        """
+        Return the tree and the node in the heap. The node object itself is
+        preferred; if it is not in the heap, a node with an equal key is used.
+        Return (None, None) when nothing matches.
+
+        """
+        for by_key in (False, True):
+            for tree in self.heap:
+                finded_node = tree.find_node(node, by_key=by_key)
+                if finded_node is not None:
+                    return tree, finded_node
+
+        return None, None
 
     def min_tree(self):
         """
@@ -103,8 +133,15 @@ class BinomialHeap:
             return None
 
         self.heap.remove(m_tree)
+        return self._extract_tree(m_tree)
 
-        m_node, new_heap = m_tree.extract_min()
+    def _extract_tree(self, tree: "BinomialTree"):
+        """
+        Extract the root of a tree already removed from the heap and union its
+        children back into the heap.
+
+        """
+        m_node, new_heap = tree.extract_min()
         self.heap = self.union(new_heap).heap
         return m_node
 
@@ -114,7 +151,7 @@ class BinomialHeap:
         New key must be less than the current key.
 
         """
-        finded_node: BinomialNode = self.find_node(node)
+        tree, finded_node = self._locate(node)
 
         if finded_node is None:
             return
@@ -122,6 +159,8 @@ class BinomialHeap:
         assert new_key < finded_node.key
         finded_node.key = new_key
         finded_node.bubble_up()
+        if finded_node.parent is None:
+            tree.root = finded_node
 
     def newick_strings(self):
         """
@@ -171,17 +210,20 @@ class BinomialTree:
 
         degree = 0
         new_heap = BinomialHeap()
-        for sub_tree in self.root.childrens:
+        for sub_tree in min_node.childrens:
             sub_tree.parent = None
             new_tree = BinomialTree(degree=degree, root=sub_tree)
             new_heap.heap = new_heap.union(BinomialHeap([new_tree])).heap
             degree += 1
 
+        # the returned node must not keep the subtrees that moved to the heap
+        min_node.childrens = []
+
         return min_node, new_heap
 
-    def find_node(self, node: "BinomialNode"):
+    def find_node(self, node: "BinomialNode", by_key: bool = False):
         """
-        Find node in tree.
+        Find node in tree, by identity or (by_key) by equal key.
 
         """
         if self.root is None:
@@ -193,7 +235,7 @@ class BinomialTree:
         while queue_len > 0:
             node_to_test = queue.pop(0)
 
-            if node_to_test == node:
+            if (node_to_test.key == node.key) if by_key else (node_to_test is node):
                 finded_node = node_to_test
                 break
 
@@ -225,9 +267,6 @@ class BinomialNode:
         self.parent: "BinomialNode" | None = None
         self.childrens: list["BinomialNode"] = []
 
-    def __eq__(self, other: "BinomialNode"):
-        return self.key == other.key
-
     @property
     def is_leaf(self):
         return len(self.childrens) == 0
@@ -240,10 +279,33 @@ class BinomialNode:
         child.parent = self
         self.childrens.append(child)
 
+    def swap_with_parent(self):
+        """
+        Swap the node with its parent by relinking, so every node object keeps
+        its own key.
+
+        """
+        parent = self.parent
+        grand = parent.parent
+
+        own_children = self.childrens
+        parent_children = [parent if c is self else c for c in parent.childrens]
+
+        self.childrens = parent_children
+        parent.childrens = own_children
+        for child in parent.childrens:
+            child.parent = parent
+        for child in self.childrens:
+            child.parent = self
+
+        self.parent = grand
+        parent.parent = self
+        if grand is not None:
+            grand.childrens = [self if c is parent else c for c in grand.childrens]
+
     def bubble_up(self):
-        if self.parent is not None and self.key < self.parent.key:
-            self.key, self.parent.key = self.parent.key, self.key
-            self.parent.bubble_up()
+        while self.parent is not None and self.key < self.parent.key:
+            self.swap_with_parent()
 
     def newick_string(self):
         newick = ""
