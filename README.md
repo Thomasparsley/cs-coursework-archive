@@ -81,3 +81,7 @@ operations as listed under dast.
 A B-tree of integer keys with a configurable minimum degree: insert with node
 splitting, search, find maximum key, and delete with borrowing from siblings
 and node merging.
+
+Running tests: `cd b-tree && go test ./...` (standard `testing` package,
+no dependencies; includes a seeded randomized test checked against B-tree
+invariants).
