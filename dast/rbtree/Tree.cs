@@ -20,6 +20,7 @@ class Tree
     {
         if (root.IsNone())
         {
+            Detach(node);
             node.color = Color.Black;
             root = new Optional<Node>(node);
             size++;
@@ -30,6 +31,7 @@ class Tree
         if (parrent.IsNone())
             throw new System.Exception("Key is already in the tree");
 
+        Detach(node);
         node.parrent = new Optional<Node>(parrent.Get());
         if (direction == Direction.Left)
             parrent.Get().left = node;
@@ -38,6 +40,14 @@ class Tree
 
         size++;
         FixInsert(node);
+    }
+
+    static void Detach(Node node)
+    {
+        node.left = Node.NilLeaf;
+        node.right = Node.NilLeaf;
+        node.parrent = new Optional<Node>();
+        node.color = Color.Red;
     }
 
     (Optional<Node>, Direction) FindParent(int key)
@@ -197,7 +207,8 @@ class Tree
 
     public Optional<Node> Delete(Node node)
     {
-        if (root.IsNone())
+        var member = Find(node.key);
+        if (member.IsNone() || member.Get() != node)
             return new Optional<Node>();
 
         size--;
@@ -240,6 +251,12 @@ class Tree
 
         if (startColor == Color.Black)
             FixDelete(x);
+
+        // Last element removed: root was replaced by the sentinel
+        if (root.Get() == Node.NilLeaf)
+            root = new Optional<Node>();
+
+        Detach(node);
 
         return new Optional<Node>(node);
     }
@@ -342,6 +359,9 @@ class Tree
 
     public Optional<Node> Find(int key)
     {
+        if (root.IsNone())
+            return new Optional<Node>();
+
         var node = root.Get();
 
         while (node != Node.NilLeaf)
