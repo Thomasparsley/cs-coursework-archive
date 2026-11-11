@@ -4,6 +4,12 @@ class Node
 {
     public static readonly Node NilLeaf = new Node(Int32.MinValue, Color.Black);
 
+    static Node()
+    {
+        NilLeaf.left = NilLeaf;
+        NilLeaf.right = NilLeaf;
+    }
+
     public int key;
     public Color color;
     public Optional<Node> parrent;
