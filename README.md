@@ -47,6 +47,12 @@ common DPLL core and several branching heuristics: Bohm, DLCS, DLIS, MOM and
 a simple custom one ("MY"). Sample CNF instances are in `cnf/`. The included
 README (in Czech) describes how to run it.
 
+Running tests: the TUnit suite lives in `dpll.Tests/` (parsing, formula
+operations, all heuristics, a seeded differential test against brute force).
+Run it with `dotnet run --project dpll.Tests` (needs the .NET 9 runtime; on the
+.NET 10 SDK `dotnet test` requires opting in to the new test experience, so use
+`dotnet run`). The slow `aim-100-1_6-no-1.cnf` sample is skipped.
+
 ## dast
 
 - Original: https://github.com/Thomasparsley/dast
