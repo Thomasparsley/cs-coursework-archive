@@ -1,0 +1,9 @@
+P2
+# header comment
+3 2 # inline
+# another
+3
+0 1 # data comment
+2
+# full line
+3 2 1

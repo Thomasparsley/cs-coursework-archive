@@ -36,6 +36,18 @@ Three small assignments for an operating systems course, each in one C file:
 - `petrzela-tomas-3-lin.c`: a dotted pair allocator for Lisp
   (`lalloc` / `lfree`).
 
+### Running tests
+
+Tests live in `os2/tests/` (plain C with a tiny assert harness, plus a shell
+script that drives `pgmtoascii` as a black box on the fixtures). The original
+sources are not modified. From `os2/`:
+
+```sh
+make test            # build and run all tests
+make test-sanitize   # same, with AddressSanitizer + UBSan
+make test-tsan       # pipe tests with ThreadSanitizer
+```
+
 ## dpll
 
 - Original: https://github.com/Thomasparsley/dpll
@@ -46,6 +58,12 @@ A DPLL SAT solver that reads formulas in DIMACS CNF format. It has a
 common DPLL core and several branching heuristics: Bohm, DLCS, DLIS, MOM and
 a simple custom one ("MY"). Sample CNF instances are in `cnf/`. The included
 README (in Czech) describes how to run it.
+
+Running tests: the TUnit suite lives in `dpll.Tests/` (parsing, formula
+operations, all heuristics, a seeded differential test against brute force).
+Run it with `dotnet run --project dpll.Tests` (needs the .NET 9 runtime; on the
+.NET 10 SDK `dotnet test` requires opting in to the new test experience, so use
+`dotnet run`). The slow `aim-100-1_6-no-1.cnf` sample is skipped.
 
 ## dast
 
@@ -61,9 +79,11 @@ Credit project for a data structures course with two parts:
   min tree, extract min, decrease key), with optional tree printing via the
   `ete3` package.
 
-### Running tests
+Running tests for `binomial_heap/`: `cd dast/binomial_heap && python -m pytest`
+(needs `pytest`, Python 3.10+; the `str()` printing test is skipped unless
+`ete3` is installed).
 
-The red-black tree has a [TUnit](https://github.com/thomhurst/TUnit) test
+Running tests for `rbtree/`: the red-black tree has a [TUnit](https://github.com/thomhurst/TUnit) test
 project in `dast/rbtree.Tests/` (needs a .NET 9 SDK):
 
 ```sh
@@ -80,6 +100,9 @@ Standalone version of the binomial heap from the data structures course:
 `BinomialHeap`, `BinomialTree` and `BinomialNode` classes with the same
 operations as listed under dast.
 
+Running tests: `cd binomial-heap && python -m pytest` (needs `pytest`,
+Python 3.10+; the `str()` printing test is skipped unless `ete3` is installed).
+
 ## b-tree
 
 - Original: https://github.com/Thomasparsley/b-tree
@@ -90,3 +113,7 @@ operations as listed under dast.
 A B-tree of integer keys with a configurable minimum degree: insert with node
 splitting, search, find maximum key, and delete with borrowing from siblings
 and node merging.
+
+Running tests: `cd b-tree && go test ./...` (standard `testing` package,
+no dependencies; includes a seeded randomized test checked against B-tree
+invariants).
