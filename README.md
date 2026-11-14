@@ -83,6 +83,13 @@ Running tests for `binomial_heap/`: `cd dast/binomial_heap && python -m pytest`
 (needs `pytest`, Python 3.10+; the `str()` printing test is skipped unless
 `ete3` is installed).
 
+Running tests for `rbtree/`: the red-black tree has a [TUnit](https://github.com/thomhurst/TUnit) test
+project in `dast/rbtree.Tests/` (needs a .NET 9 SDK):
+
+```sh
+dotnet run --project dast/rbtree.Tests/rbtree.Tests.csproj
+```
+
 ## binomial-heap
 
 - Original: https://github.com/Thomasparsley/binomial-heap
